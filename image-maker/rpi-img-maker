@@ -68,7 +68,7 @@ printf "INFO: boot size $BOOT_SIZE MB\n"
 [ $BOOT_SIZE -gt 64 ] && { printf "ERROR: boot dir is oversized (more than 64MB)\n" 1>&2; exit 2; }
 ROOT_SIZE=$(du -smx $ROOT_PATH | cut -f1)
 printf "INFO: root size $ROOT_SIZE MB\n"
-[ $ROOT_SIZE -gt 4096 ] && { printf "ERROR: root dir is oversized (more than 4GB)\n" 1>&2; exit 2; }
+[ $ROOT_SIZE -gt 8192 ] && { printf "ERROR: root dir is oversized (more than 8GB)\n" 1>&2; exit 2; }
 
 # init image file (zero padded)
 IMG_SIZE=`expr $ROOT_SIZE + 64 + 512`
