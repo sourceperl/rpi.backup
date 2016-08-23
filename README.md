@@ -25,7 +25,7 @@ partitions cards: fat16/ext4 or fat16/btrfs
 
 Usage of btrfs for linux root filesytem need custom kernel. See: 
 https://www.raspberrypi.org/documentation/linux/kernel/building.md for 
-instructions on custom kernel building and see alse "Custom kernel" below.
+instructions on custom kernel building and see also "Custom kernel" below.
 
 ### Setup
 
