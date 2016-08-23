@@ -20,12 +20,12 @@ ext4 don't allow snapshot but btrfs can do that.
 
 ## Tool rpi-img-maker
 
-This script auto-build an image file for Raspberry Pi SD card
-- build standard 2 partitions cards: fat16/ext4 or fat16/btrfs
-- usage of btrfs for linux root filesytem need custom kernel
+This script auto-build an image file for Raspberry Pi SD card. Build standard 2 
+partitions cards: fat16/ext4 or fat16/btrfs
 
-See: https://www.raspberrypi.org/documentation/linux/kernel/building.md for 
-instructions on custom kernel building and see "Custom kernel" below.
+Usage of btrfs for linux root filesytem need custom kernel. See: 
+https://www.raspberrypi.org/documentation/linux/kernel/building.md for 
+instructions on custom kernel building and see alse "Custom kernel" below.
 
 ### Setup
 
@@ -36,13 +36,15 @@ instructions on custom kernel building and see "Custom kernel" below.
 
 from a remote builder :
 
-    # build image for easy restore
     sudo rpi-img-maker /local/path/boot/ /local/path/root_fs/ myrpi-20160823.img
 
 locally on a Raspberry :
 
-    # build image for easy restore
     sudo rpi-img-maker /boot/ / /path/to/usb-key/myrpi-20160823.img
+
+help :
+
+    sudo rpi-img-make -h
 
 ## Custom Pi kernel
 
