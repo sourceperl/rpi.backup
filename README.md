@@ -1,6 +1,6 @@
 # rpi.backup
 
-A usefull set of tools for backup a Raspberry (locally or remotely).
+A useful set for backup or restore a Raspberry (locally or remotely).
 
 
 ## Rsync
@@ -18,6 +18,15 @@ In some case, like backup of databases files, it's should be better to make a
 snapshot of filesystem before remote copy. The default Raspbian root filesystem 
 ext4 don't allow snapshot but btrfs can do that.
 
+## Rpi Tools
+
+A set of tools to use with the Raspberry Pi for manage backup and restore.
+
+### Setup
+
+    # on Debian like Linux distribution
+    sudo ./rpi-tools/setup-rpi-tools.sh
+
 ## Tool rpi-img-maker
 
 This script auto-build an image file for Raspberry Pi SD card. Build standard 2 
@@ -26,11 +35,6 @@ partitions cards: fat16/ext4 or fat16/btrfs
 Usage of btrfs for linux root filesytem need custom kernel. See: 
 https://www.raspberrypi.org/documentation/linux/kernel/building.md for 
 instructions on custom kernel building and see also "Custom kernel" below.
-
-### Setup
-
-    # on Debian like Linux distribution
-    sudo ./image-maker/setup-maker.sh
 
 ### Usage
 

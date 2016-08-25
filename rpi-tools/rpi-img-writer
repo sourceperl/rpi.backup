@@ -1,0 +1,35 @@
+#!/bin/bash
+#
+
+# vars
+NAME=$(basename $0)
+
+# parse optionals args
+while getopts 'h' OPTION
+do
+    case $OPTION in
+    h)
+        printf "Usage: %s: [-h] IMAGE_FILE DEVICE_TO_WRITE\n" $NAME
+        printf "\n"
+        printf "  -h    print this help message\n"
+        exit 0
+        ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+# parse fixed args
+IMG=$1
+DEVICE=$2
+
+# some checks
+[ $EUID -ne 0 ] && { printf "ERROR: $NAME needs to be run by root\n" 1>&2; exit 1; }
+[ $# -ne 2 ] && { printf "ERROR: Usage: %s: [-h] IMAGE_FILE DEVICE_TO_WRITE\n" $NAME 1>&2; exit 1; }
+[ ! -f $IMG ] && { printf "ERROR: %s is not a regular image file\n" $IMG 1>&2; exit 1; }
+[ ! -b $DEVICE ] && { printf "ERROR: %s is not a block device\n" $DEVICE 1>&2; exit 1; }
+
+# check if device is mounted
+grep -qs $DEVICE /proc/mounts && { printf "ERROR: %s is mounted\n" $DEVICE 1>&2; exit 1; }
+
+# write image to device with confirmation
+ddrescue --ask -D --force $IMG $DEVICE
