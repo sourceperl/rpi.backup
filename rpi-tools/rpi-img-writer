@@ -9,7 +9,7 @@ while getopts 'h' OPTION
 do
     case $OPTION in
     h)
-        printf "Usage: %s: [-h] IMAGE_FILE DEVICE_TO_WRITE\n" $NAME
+        printf "Usage: %s: [-h] IMAGE_FILE DEVICE_TO_WRITE\n" $NAME
         printf "\n"
         printf "  -h    print this help message\n"
         exit 0
@@ -24,6 +24,7 @@ DEVICE=$2
 
 # some checks
 [ $EUID -ne 0 ] && { printf "ERROR: $NAME needs to be run by root\n" 1>&2; exit 1; }
+[ ! -x "$(command -v pv)" ] && { printf "ERROR: pv not found\n" 1>&2; exit 1; }
 [ $# -ne 2 ] && { printf "ERROR: Usage: %s: [-h] IMAGE_FILE DEVICE_TO_WRITE\n" $NAME 1>&2; exit 1; }
 [ ! -f $IMG ] && { printf "ERROR: %s is not a regular image file\n" $IMG 1>&2; exit 1; }
 [ ! -b $DEVICE ] && { printf "ERROR: %s is not a block device\n" $DEVICE 1>&2; exit 1; }
@@ -31,5 +32,28 @@ DEVICE=$2
 # check if device is mounted
 grep -qs $DEVICE /proc/mounts && { printf "ERROR: %s is mounted\n" $DEVICE 1>&2; exit 1; }
 
-# write image to device with confirmation
-ddrescue --ask -D --force $IMG $DEVICE
+# check size
+IMG_SIZE=$(du -smx $IMG | cut -f1)
+DEVICE_SIZE_B=$(blockdev --getsize64 /dev/sdb)
+DEVICE_SIZE=`expr $DEVICE_SIZE_B / 1048576`
+[ $IMG_SIZE -ge $DEVICE_SIZE ] && { printf "ERROR: image too big ($IMG_SIZE MB) for SD card ($DEVICE_SIZE MB)\n" 1>&2; exit 1; }
+
+
+# check if image use gzip compress
+case "$IMG" in
+*.gz)
+    # confirm write
+    read -p "WARN: Write image (gzip format) to SD card $DEVICE ($DEVICE_SIZE MB) ? (y/n)" -r
+    [[ ! $REPLY =~ ^[Yy]$ ]] && { exit 1; }
+    # do write
+    gunzip -c $IMG | pv > $DEVICE
+    ;;
+*)
+    # confirm write
+    read -p "WARN: Write image ($IMG_SIZE MB) to SD card $DEVICE ($DEVICE_SIZE MB) ? (y/n)" -r
+    [[ ! $REPLY =~ ^[Yy]$ ]] && { exit 1; }
+    # do write
+    pv $IMG > $DEVICE
+    ;;
+esac
+

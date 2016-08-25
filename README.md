@@ -25,6 +25,7 @@ A set of tools to use with the Raspberry Pi for manage backup and restore.
 ### Setup
 
     # on Debian like Linux distribution
+    sudo apt-get install -y dosfstools e2fsprogs pv
     sudo ./rpi-tools/setup-rpi-tools.sh
 
 ## Tool rpi-img-maker
