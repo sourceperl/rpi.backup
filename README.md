@@ -49,7 +49,30 @@ locally on a Raspberry :
 
 help :
 
-    sudo rpi-img-make -h
+    sudo rpi-img-maker -h
+
+## Tool rpi-img-writer
+
+This script write an image file (RAW with or without gzip compress) to a SD 
+card. Since using directly dd can be dangerous this script add some checks like 
+target device is mount ?, target is a block device ?, size matching, y/n 
+confirm...
+
+### Usage
+
+without gzip :
+
+    sudo rpi-img-writer myrpi-20160823.img /dev/usb-card-device
+
+with gzip (for image with *.gz name writer use on fly gunzip):
+
+    sudo rpi-img-writer myrpi-20160823.img.gz /dev/usb-card-device
+
+help :
+
+    sudo rpi-img-writer -h
+
+### Misc
 
 ## Custom Pi kernel
 
