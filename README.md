@@ -72,7 +72,7 @@ help :
 
     sudo rpi-img-writer -h
 
-### Misc
+# Misc
 
 ## Custom Pi kernel
 
