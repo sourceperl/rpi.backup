@@ -34,7 +34,7 @@ grep -qs $DEVICE /proc/mounts && { printf "ERROR: %s is mounted\n" $DEVICE 1>&2;
 
 # check size
 IMG_SIZE=$(du -smx $IMG | cut -f1)
-DEVICE_SIZE_B=$(blockdev --getsize64 /dev/sdb)
+DEVICE_SIZE_B=$(blockdev --getsize64 $DEVICE)
 DEVICE_SIZE=`expr $DEVICE_SIZE_B / 1048576`
 [ $IMG_SIZE -ge $DEVICE_SIZE ] && { printf "ERROR: image too big ($IMG_SIZE MB) for SD card ($DEVICE_SIZE MB)\n" 1>&2; exit 1; }
 
