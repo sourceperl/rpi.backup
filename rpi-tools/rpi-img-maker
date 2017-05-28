@@ -48,6 +48,7 @@ IMG_FILE=$3
 [ $EUID -ne 0 ] && { printf "ERROR: $NAME needs to be run by root\n" 1>&2; exit 1; }
 [ ! -x "$(command -v mkfs.fat)" ] && { printf "ERROR: mkfs.fat not found\n" 1>&2; exit 1; }
 [ ! -x "$(command -v mkfs.ext4)" ] && { printf "ERROR: mkfs.ext4 not found\n" 1>&2; exit 1; }
+[ ! -x "$(command -v fdisk)" ] && { printf "ERROR: fdisk not found\n" 1>&2; exit 1; }
 [ $BTRFS -eq 1 ] && [ ! -x "$(command -v mkfs.btrfs)" ] && { printf "ERROR: mkfs.btrfs not found\n" 1>&2; exit 1; }
 [ $# -ne 3 ] && { printf "ERROR: $NAME needs 3 args\n" 1>&2; exit 1; }
 [ ! -d $BOOT_PATH ] && { printf "ERROR: BOOT_DIR invalid\n" 1>&2; exit 1; }
@@ -55,7 +56,7 @@ IMG_FILE=$3
 
 if [ -f $IMG_FILE ] && [ $FORCE -ne 1 ]
 then
-    read -p "WARN: Image file $IMG_FILE already exist, confirm overwrite ? (y/n)" -r
+    read -p "WARN: image file $IMG_FILE already exist, confirm overwrite ? (y/n)" -r
     if [[ ! $REPLY =~ ^[Yy]$ ]]
     then
         exit 1
@@ -70,6 +71,26 @@ ROOT_SIZE=$(du -smx $ROOT_PATH | cut -f1)
 printf "INFO: root size $ROOT_SIZE MB\n"
 [ $ROOT_SIZE -gt 8192 ] && { printf "ERROR: root dir is oversized (more than 8GB)\n" 1>&2; exit 2; }
 
+# search mount string for boot and root in fstab file
+FSTAB=$(realpath $ROOT_PATH/etc/fstab)
+printf "INFO: looking for fstab at \"$FSTAB\"\n"
+[ ! -f $RPI_FSTAB ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
+FSTAB_BOOT_ID=$(cat $FSTAB | grep -v '^#' | grep '\s/boot\s' | awk '{ print $1 }')
+FSTAB_ROOT_ID=$(cat $FSTAB | grep -v '^#' | grep '\s/\s' | awk '{ print $1 }')
+printf "INFO: in fstab boot is mount with \"$FSTAB_BOOT_ID\"\n"
+printf "INFO: in fstab root is mount with \"$FSTAB_ROOT_ID\"\n"
+
+# define vars for partitions build process
+PUUID=$(echo $FSTAB_BOOT_ID | awk -v RS=" " '/^PARTUUID=/ {print substr($0,10)}' | awk -v FS="-" '{print $1}')
+UUID_BOOT=$(echo $FSTAB_BOOT_ID | awk -v RS=" " '/^UUID=/ {print substr($0,10)}')
+UUID_ROOT=$(echo $FSTAB_ROOT_ID | awk -v RS=" " '/^UUID=/ {print substr($0,10)}')
+
+# search root in cmdline.txt file
+CMDLINE=$(realpath $BOOT_PATH/cmdline.txt)
+printf "INFO: looking for cmdline.txt at \"$CMDLINE\"\n"
+CMDLINE_ROOT_ID=$(cat $CMDLINE | awk -v RS=" " '/^root=/ {print substr($0,6)}')
+printf "INFO: in cmdline.txt kernel boot with \"$CMDLINE_ROOT_ID\" root fs\n"
+
 # init image file (zero padded)
 IMG_SIZE=`expr $ROOT_SIZE + 64 + 512`
 printf "INFO: start $IMG_SIZE MB image build, please wait\n"
@@ -83,6 +104,16 @@ printf "INFO: create boot (part1) and root (part2) partitions\n"
 parted $IMG_FILE mklabel msdos > /dev/null || { printf "ERROR: make part table error\n" 1>&2; exit 1; }
 parted $IMG_FILE mkpart primary fat16 8192s 137215s > /dev/null || { printf "ERROR: make part1 error\n" 1>&2; exit 1; }
 parted $IMG_FILE -- mkpart primary ext4 137216s -1s > /dev/null || { printf "ERROR: make part2 error\n" 1>&2; exit 1; }
+
+# add PUUID to image file (if use by fstab)
+if [ ! -z $PUUID ]
+then
+    printf "INFO: add PUUID \"$PUUID\" to image file\n"
+    LOOP_IMG=$(losetup --show --find $IMG_FILE)
+    printf "x\ni\n0x%s\nr\nw\n" $PUUID | sudo fdisk $LOOP_IMG &>/dev/null
+    sleep 1
+    losetup -d $LOOP_IMG
+fi
 
 # boot: map loopback, format, mount, copy, unmount, release loopback
 LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*129024)) --show --find $IMG_FILE)
