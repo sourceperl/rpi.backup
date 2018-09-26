@@ -9,10 +9,10 @@ A useful set for backup or restore a Raspberry (locally or remotely).
 
 
     # boot file system (rpi /boot/) for partition 1
-    sudo rsync -axv --rsync-path='sudo rsync' pi@RPI_IP:/boot/ /local/path/boot/
+    sudo rsync -axv --numeric-ids --rsync-path='sudo rsync' pi@RPI_IP:/boot/ /local/path/boot/
 
     # root file system (rpi /) for partition 2
-    sudo rsync -axv --rsync-path='sudo rsync' pi@RPI_IP:/ /local/path/root_fs/
+    sudo rsync -axv --numeric-ids --rsync-path='sudo rsync' pi@RPI_IP:/ /local/path/root_fs/
 
 In some case, like backup of databases files, it's should be better to make a 
 snapshot of filesystem before remote copy. The default Raspbian root filesystem 
