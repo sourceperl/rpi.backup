@@ -16,6 +16,10 @@ printf "install tools to /usr/local/sbin/\n"
 cp $SCRIPT_ABS_PATH/rpi-img-maker /usr/local/sbin/
 chmod +x /usr/local/sbin/rpi-img-maker
 
+# rpi-remote-img-maker
+cp $SCRIPT_ABS_PATH/rpi-remote-img-maker /usr/local/sbin/
+chmod +x /usr/local/sbin/rpi-remote-img-maker
+
 # rpi-img-writer
 [ ! -x "$(command -v pv)" ] && { printf "WARN: pv not found but need by rpi-img-write\n" 1>&2; }
 cp $SCRIPT_ABS_PATH/rpi-img-writer /usr/local/sbin/
