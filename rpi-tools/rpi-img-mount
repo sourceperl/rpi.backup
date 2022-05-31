@@ -1,0 +1,59 @@
+#!/bin/bash
+# This script auto-mount a Raspberry PI image file and open a shell on it
+#
+# you can use it like this :
+#     rpi-img-mount IMAGE_FILE
+#
+# so directly on a Raspberry Pi:
+#     sudo rpi-img-mount myimage.img
+
+# vars
+NAME=$(basename "$0")
+
+# parse optionals args
+while getopts 'h' OPTION
+do
+    case $OPTION in
+    h)
+        printf "Usage: %s: [-h] IMAGE_FILE\n" "$NAME"
+        printf "\n"
+        printf "  -h    print this help message\n"
+        exit 0
+        ;;
+    esac
+done
+shift $(("$OPTIND" - 1))
+
+# parse fixed args
+IMG_FILE=$1
+
+# some checks
+[ $EUID -ne 0 ] && { printf "ERROR: %s needs to be run by root\n" "$NAME" 1>&2; exit 1; }
+[ $# -ne 1 ] && { printf "ERROR: %s needs 1 arg\n" "$NAME" 1>&2; exit 1; }
+[ ! -f "$IMG_FILE" ] && { printf "ERROR: file \"%s\" not exist\n" "$IMG_FILE" 1>&2; exit 1; }
+
+# mount image file
+printf "INFO: mount image file \"%s\"\n" "$IMG_FILE"
+CUR_DIR=$(pwd)
+TMP_DIR=$(mktemp -d --tmpdir="$CUR_DIR")
+printf "INFO: create tmp directory \"%s\"\n" "$TMP_DIR"
+LOOP=$(losetup --show -fP "${IMG_FILE}")
+printf "INFO: map image file to \"%s\"\n" "$LOOP"
+mount "$LOOP"p2 "$TMP_DIR" \
+  && mount "$LOOP"p1 "$TMP_DIR"/boot/ \
+  && printf "INFO: mount tmp directory OK\n"
+# open a shell session in the tmp dir
+printf "INFO: open bash session to image file (root fs is mount at %s) \n" "$TMP_DIR"
+printf "INFO: enter \"exit\" to quit this session and unmount image\n"
+cd "$TMP_DIR" && bash
+
+# cleanup
+cd "$CUR_DIR" \
+  && umount "$TMP_DIR"/boot/ \
+  && umount "$TMP_DIR" \
+  && printf "INFO: unmount of image file OK\n" \
+  && rmdir "$TMP_DIR" \
+  && printf "INFO: remove of tmp directory OK\n"
+losetup -d "$LOOP"
+
+exit 0
