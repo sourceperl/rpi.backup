@@ -11,7 +11,7 @@
 #     sudo rpi-img-maker /boot / /media/pi/my_usb_key/out.img
 
 # vars
-NAME=$(basename $0)
+NAME=$(basename "$0")
 
 # flags
 FORCE=0
@@ -28,7 +28,7 @@ do
         FORCE=1
         ;;
     h)
-        printf "Usage: %s: [-h] [-b] [-f] BOOT_DIR ROOT_DIR IMAGE_FILE\n" $NAME
+        printf "Usage: %s: [-h] [-b] [-f] BOOT_DIR ROOT_DIR IMAGE_FILE\n" "$NAME"
         printf "\n"
         printf "  -h    print this help message\n"
         printf "  -b    use btrfs file system for 2nd part instead of default ext4\n"
@@ -37,7 +37,7 @@ do
         ;;
     esac
 done
-shift $(($OPTIND - 1))
+shift $(("$OPTIND" - 1))
 
 # parse fixed args
 BOOT_PATH=$1
@@ -45,16 +45,16 @@ ROOT_PATH=$2
 IMG_FILE=$3
 
 # some checks
-[ $EUID -ne 0 ] && { printf "ERROR: $NAME needs to be run by root\n" 1>&2; exit 1; }
+[ $EUID -ne 0 ] && { printf "ERROR: %s needs to be run by root\n" "$NAME" 1>&2; exit 1; }
 [ ! -x "$(command -v mkfs.fat)" ] && { printf "ERROR: mkfs.fat not found\n" 1>&2; exit 1; }
 [ ! -x "$(command -v mkfs.ext4)" ] && { printf "ERROR: mkfs.ext4 not found\n" 1>&2; exit 1; }
 [ ! -x "$(command -v fdisk)" ] && { printf "ERROR: fdisk not found\n" 1>&2; exit 1; }
 [ $BTRFS -eq 1 ] && [ ! -x "$(command -v mkfs.btrfs)" ] && { printf "ERROR: mkfs.btrfs not found\n" 1>&2; exit 1; }
-[ $# -ne 3 ] && { printf "ERROR: $NAME needs 3 args\n" 1>&2; exit 1; }
-[ ! -d $BOOT_PATH ] && { printf "ERROR: BOOT_DIR invalid\n" 1>&2; exit 1; }
-[ ! -d $ROOT_PATH ] && { printf "ERROR: ROOT_DIR invalid\n" 1>&2; exit 1; }
+[ $# -ne 3 ] && { printf "ERROR: %s needs 3 args\n" "$NAME" 1>&2; exit 1; }
+[ ! -d "$BOOT_PATH" ] && { printf "ERROR: BOOT_DIR invalid\n" 1>&2; exit 1; }
+[ ! -d "$ROOT_PATH" ] && { printf "ERROR: ROOT_DIR invalid\n" 1>&2; exit 1; }
 
-if [ -f $IMG_FILE ] && [ $FORCE -ne 1 ]
+if [ -f "$IMG_FILE" ] && [ $FORCE -ne 1 ]
 then
     read -p "WARN: image file $IMG_FILE already exist, confirm overwrite ? (y/n)" -r
     if [[ ! $REPLY =~ ^[Yy]$ ]]
@@ -64,86 +64,96 @@ then
 fi
 
 # detect size need for root filesystem
-BOOT_SIZE=$(du -smx $BOOT_PATH | cut -f1)
-printf "INFO: boot size $BOOT_SIZE MB\n"
-[ $BOOT_SIZE -gt 64 ] && { printf "ERROR: boot dir is oversized (more than 64MB)\n" 1>&2; exit 2; }
-ROOT_SIZE=$(du -smx $ROOT_PATH | cut -f1)
-printf "INFO: root size $ROOT_SIZE MB\n"
-[ $ROOT_SIZE -gt 8192 ] && { printf "ERROR: root dir is oversized (more than 8GB)\n" 1>&2; exit 2; }
+BOOT_SIZE=$(du -smx "$BOOT_PATH" | cut -f1)
+printf "INFO: boot size %s MB\n" "$BOOT_SIZE"
+[ "$BOOT_SIZE" -gt 64 ] && { printf "ERROR: boot dir is oversized (more than 64MB)\n" 1>&2; exit 2; }
+ROOT_SIZE=$(du -smx "$ROOT_PATH" | cut -f1)
+printf "INFO: root size %s MB\n" "$ROOT_SIZE"
+[ "$ROOT_SIZE" -gt 8192 ] && { printf "ERROR: root dir is oversized (more than 8GB)\n" 1>&2; exit 2; }
 
 # search mount string for boot and root in fstab file
-FSTAB=$(realpath $ROOT_PATH/etc/fstab)
-printf "INFO: looking for fstab at \"$FSTAB\"\n"
-[ ! -f $RPI_FSTAB ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
-FSTAB_BOOT_ID=$(cat $FSTAB | grep -v '^#' | grep '\s/boot\s' | awk '{ print $1 }')
-FSTAB_ROOT_ID=$(cat $FSTAB | grep -v '^#' | grep '\s/\s' | awk '{ print $1 }')
-printf "INFO: in fstab boot is mount with \"$FSTAB_BOOT_ID\"\n"
-printf "INFO: in fstab root is mount with \"$FSTAB_ROOT_ID\"\n"
+FSTAB=$(realpath "$ROOT_PATH"/etc/fstab)
+printf "INFO: looking for fstab at \"%s\"\n" "$FSTAB"
+[ ! -f "$FSTAB" ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
+FSTAB_BOOT_ID=$(cat "$FSTAB" | grep -v '^#' | grep '\s/boot\s' | awk '{ print $1 }')
+FSTAB_ROOT_ID=$(cat "$FSTAB" | grep -v '^#' | grep '\s/\s' | awk '{ print $1 }')
+printf "INFO: in fstab boot is mount with \"%s\"\n" "$FSTAB_BOOT_ID"
+printf "INFO: in fstab root is mount with \"%s\"\n" "$FSTAB_ROOT_ID"
 
 # define vars for partitions build process
-PUUID=$(echo $FSTAB_BOOT_ID | awk -v RS=" " '/^PARTUUID=/ {print substr($0,10)}' | awk -v FS="-" '{print $1}')
-UUID_BOOT=$(echo $FSTAB_BOOT_ID | awk -v RS=" " '/^UUID=/ {print substr($0,10)}')
-UUID_ROOT=$(echo $FSTAB_ROOT_ID | awk -v RS=" " '/^UUID=/ {print substr($0,10)}')
+PUUID=$(echo "$FSTAB_BOOT_ID" | awk -v RS=" " '/^PARTUUID=/ {print substr($0,10)}' | awk -v FS="-" '{print $1}')
+# UUID_BOOT=$(echo $FSTAB_BOOT_ID | awk -v RS=" " '/^UUID=/ {print substr($0,10)}')
+# UUID_ROOT=$(echo $FSTAB_ROOT_ID | awk -v RS=" " '/^UUID=/ {print substr($0,10)}')
 
 # search root in cmdline.txt file
-CMDLINE=$(realpath $BOOT_PATH/cmdline.txt)
-printf "INFO: looking for cmdline.txt at \"$CMDLINE\"\n"
-CMDLINE_ROOT_ID=$(cat $CMDLINE | awk -v RS=" " '/^root=/ {print substr($0,6)}')
-printf "INFO: in cmdline.txt kernel boot with \"$CMDLINE_ROOT_ID\" root fs\n"
+CMDLINE=$(realpath "$BOOT_PATH"/cmdline.txt)
+printf "INFO: looking for cmdline.txt at \"%s\"\n" "$CMDLINE"
+CMDLINE_ROOT_ID=$(cat "$CMDLINE" | awk -v RS=" " '/^root=/ {print substr($0,6)}')
+printf "INFO: in cmdline.txt kernel boot with \"%s\" root fs\n" "$CMDLINE_ROOT_ID"
 
 # init image file (zero padded)
-IMG_SIZE=`expr $ROOT_SIZE + 64 + 512`
-printf "INFO: start $IMG_SIZE MB image build, please wait\n"
-dd if=/dev/zero of=$IMG_FILE bs=1M count=$IMG_SIZE &> /dev/null || { printf "ERROR: file init error\n" 1>&2; exit 1; }
-[ $? -eq 0 ] && printf "INFO: init of file %s OK\n" $IMG_FILE
+IMG_SIZE=$(("$ROOT_SIZE" + 64 + 512))
+printf "INFO: start %s MB image build, please wait\n" "$IMG_SIZE"
+if dd if=/dev/zero of="$IMG_FILE" bs=1M count="$IMG_SIZE" &> /dev/null;
+then
+  printf "INFO: init of file %s OK\n" "$IMG_FILE"
+else
+  printf "ERROR: file init error\n" 1>&2;
+  exit 1;
+fi
 
 # create 2 partitions on it (for boot and root fs, a sector is 512 bytes wide)
 # first for boot (FAT16): fix 64 MB sized from sector 8192 to 137215
 # second for root fs (ext4): from sector 137216 to end of image
 printf "INFO: create boot (part1) and root (part2) partitions\n"
-parted $IMG_FILE mklabel msdos > /dev/null || { printf "ERROR: make part table error\n" 1>&2; exit 1; }
-parted $IMG_FILE mkpart primary fat16 8192s 137215s > /dev/null || { printf "ERROR: make part1 error\n" 1>&2; exit 1; }
-parted $IMG_FILE -- mkpart primary ext4 137216s -1s > /dev/null || { printf "ERROR: make part2 error\n" 1>&2; exit 1; }
+parted "$IMG_FILE" mklabel msdos > /dev/null || { printf "ERROR: make part table error\n" 1>&2; exit 1; }
+parted "$IMG_FILE" mkpart primary fat16 8192s 137215s > /dev/null || { printf "ERROR: make part1 error\n" 1>&2; exit 1; }
+parted "$IMG_FILE" -- mkpart primary ext4 137216s -1s > /dev/null || { printf "ERROR: make part2 error\n" 1>&2; exit 1; }
 
 # add PUUID to image file (if use by fstab)
-if [ ! -z $PUUID ]
+if [ -n "$PUUID" ]
 then
-    printf "INFO: add PUUID \"$PUUID\" to image file\n"
-    LOOP_IMG=$(losetup --show --find $IMG_FILE)
-    printf "x\ni\n0x%s\nr\nw\n" $PUUID | sudo fdisk $LOOP_IMG &>/dev/null
+    printf "INFO: add PUUID \"%s\" to image file\n" "$PUUID"
+    LOOP_IMG=$(losetup --show --find "$IMG_FILE")
+    printf "x\ni\n0x%s\nr\nw\n" "$PUUID" | sudo fdisk "$LOOP_IMG" &>/dev/null
     sleep 1
-    losetup -d $LOOP_IMG
+    losetup -d "$LOOP_IMG"
 fi
 
 # boot: map loopback, format, mount, copy, unmount, release loopback
-LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*129024)) --show --find $IMG_FILE)
-mkfs.fat -n "boot" $LOOP_BOOT > /dev/null && printf "INFO: format part1 in fat OK\n"
+LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*129024)) --show --find "$IMG_FILE")
+mkfs.fat -n "boot" "$LOOP_BOOT" > /dev/null && printf "INFO: format part1 in fat OK\n"
 MNT_BOOT=$(mktemp -d)
 printf "INFO: copy files to part1\n"
-mount $LOOP_BOOT $MNT_BOOT && cp -ax $BOOT_PATH/. $MNT_BOOT/. && sync && printf "INFO: copy OK\n"
-umount $MNT_BOOT
-rmdir $MNT_BOOT
+mount "$LOOP_BOOT" "$MNT_BOOT" \
+  && rsync -axX --numeric-ids "$BOOT_PATH"/. "$MNT_BOOT"/. \
+  && sync && printf "INFO: copy OK\n"
+umount "$MNT_BOOT"
+rmdir "$MNT_BOOT"
 sleep 1
-losetup -d $LOOP_BOOT
+losetup -d "$LOOP_BOOT"
 
 # root: map loopback, format, mount, copy, unmount, release loopback
-LOOP_ROOT=$(losetup --offset $((512*137216)) --show --find $IMG_FILE)
+LOOP_ROOT=$(losetup --offset $((512*137216)) --show --find "$IMG_FILE")
 MNT_OPT=''
 if [ $BTRFS -eq 1 ]
 then
-    mkfs.btrfs $LOOP_ROOT > /dev/null && printf "INFO: format part2 in btrfs OK\n"
+    mkfs.btrfs "$LOOP_ROOT" > /dev/null && printf "INFO: format part2 in btrfs OK\n"
     MNT_OPT='-o compress'
 else
-    mkfs.ext4 $LOOP_ROOT > /dev/null && printf "INFO: format part2 in ext4 OK\n"
+    mkfs.ext4 "$LOOP_ROOT" > /dev/null && printf "INFO: format part2 in ext4 OK\n"
 fi
 MNT_ROOT=$(mktemp -d)
+IMG_FILE_RP=$(realpath "$IMG_FILE")
 printf "INFO: copy files to part2, this can take a long time\n"
-mount $MNT_OPT $LOOP_ROOT $MNT_ROOT && cp -ax $ROOT_PATH/. $MNT_ROOT/. && sync && printf "INFO: copy OK\n"
-umount $MNT_ROOT
-rmdir $MNT_ROOT
+# avoid to double quote $MNT_OPT: arg must be unset if MNT_OPT is an empty string
+mount ${MNT_OPT} "$LOOP_ROOT" "$MNT_ROOT" \
+  && rsync -axX --numeric-ids --exclude=/boot/* --exclude="$IMG_FILE_RP" "$ROOT_PATH"/. "$MNT_ROOT"/. \
+  && sync && printf "INFO: copy OK\n" && umount "$MNT_ROOT"
+rmdir "$MNT_ROOT"
 sleep 1
-losetup -d $LOOP_ROOT
+losetup -d "$LOOP_ROOT"
 
 # end message
-printf "INFO: %s build (size=%s MB)\n" $IMG_FILE $IMG_SIZE
+printf "INFO: %s build (size=%s MB)\n" "$IMG_FILE" "$IMG_SIZE"
 exit 0
