@@ -14,25 +14,40 @@
 NAME=$(basename "$0")
 
 # flags
+AUTO=0
 FORCE=0
 BTRFS=0
+GZIP=0
+XZ=0
 
 # parse optionals args
-while getopts 'bfh' OPTION
+while getopts 'abfghx' OPTION
 do
     case $OPTION in
+    a)
+        AUTO=1
+        ;;
     b)
         BTRFS=1
         ;;
     f)
         FORCE=1
         ;;
+    g)
+        GZIP=1
+        ;;
+    x)
+        XZ=1
+        ;;
     h)
-        printf "Usage: %s: [-h] [-b] [-f] BOOT_DIR ROOT_DIR IMAGE_FILE\n" "$NAME"
+        printf "Usage: %s: [-h] [-a] [-b] [-f] [-g] [-x] BOOT_DIR ROOT_DIR IMAGE_FILE\n" "$NAME"
         printf "\n"
         printf "  -h    print this help message\n"
+        printf "  -a    auto-mode, fix args to \"/boot / hostname-yyyymmdd.img\"\n"
         printf "  -b    use btrfs file system for 2nd part instead of default ext4\n"
         printf "  -f    write img file even if file already exist\n"
+        printf "  -g    gzip img file\n"
+        printf "  -x    xz img file\n"
         exit 0
         ;;
     esac
@@ -40,17 +55,28 @@ done
 shift $(("$OPTIND" - 1))
 
 # parse fixed args
-BOOT_PATH=$1
-ROOT_PATH=$2
-IMG_FILE=$3
+if [ $AUTO -eq 1 ];
+then
+  BOOT_PATH="/boot"
+  ROOT_PATH="/"
+  IMG_FILE="$(hostname)"-"$(date +"%Y%m%d")".img
+else
+  BOOT_PATH=$1
+  ROOT_PATH=$2
+  IMG_FILE=$3
+fi
 
 # some checks
 [ $EUID -ne 0 ] && { printf "ERROR: %s needs to be run by root\n" "$NAME" 1>&2; exit 1; }
+[ $GZIP -eq 1 ] && [ $XZ -eq 1 ] && { printf "ERROR: cannot have -g and -x set at same time\n" 1>&2; exit 1; }
 [ ! -x "$(command -v mkfs.fat)" ] && { printf "ERROR: mkfs.fat not found\n" 1>&2; exit 1; }
 [ ! -x "$(command -v mkfs.ext4)" ] && { printf "ERROR: mkfs.ext4 not found\n" 1>&2; exit 1; }
 [ ! -x "$(command -v fdisk)" ] && { printf "ERROR: fdisk not found\n" 1>&2; exit 1; }
+[ ! -x "$(command -v rsync)" ] && { printf "ERROR: rsync not found\n" 1>&2; exit 1; }
 [ $BTRFS -eq 1 ] && [ ! -x "$(command -v mkfs.btrfs)" ] && { printf "ERROR: mkfs.btrfs not found\n" 1>&2; exit 1; }
-[ $# -ne 3 ] && { printf "ERROR: %s needs 3 args\n" "$NAME" 1>&2; exit 1; }
+[ $GZIP -eq 1 ] && [ ! -x "$(command -v gzip)" ] && { printf "ERROR: gzip not found\n" 1>&2; exit 1; }
+[ $XZ -eq 1 ] && [ ! -x "$(command -v xz)" ] && { printf "ERROR: xz not found\n" 1>&2; exit 1; }
+[ $AUTO -ne 1 ] && [ $# -ne 3 ] && { printf "ERROR: %s needs 3 args\n" "$NAME" 1>&2; exit 1; }
 [ ! -d "$BOOT_PATH" ] && { printf "ERROR: BOOT_DIR invalid\n" 1>&2; exit 1; }
 [ ! -d "$ROOT_PATH" ] && { printf "ERROR: ROOT_DIR invalid\n" 1>&2; exit 1; }
 
@@ -126,9 +152,9 @@ mkfs.fat -n "boot" "$LOOP_BOOT" > /dev/null && printf "INFO: format part1 in fat
 MNT_BOOT=$(mktemp -d)
 printf "INFO: copy files to part1\n"
 mount "$LOOP_BOOT" "$MNT_BOOT" \
-  && rsync -axX --numeric-ids "$BOOT_PATH"/. "$MNT_BOOT"/. \
-  && sync && printf "INFO: copy OK\n"
-umount "$MNT_BOOT"
+  && rsync -aAxX --numeric-ids "$BOOT_PATH"/. "$MNT_BOOT"/. \
+  && sync && printf "INFO: copy OK\n" \
+  && umount "$MNT_BOOT"
 rmdir "$MNT_BOOT"
 sleep 1
 losetup -d "$LOOP_BOOT"
@@ -148,12 +174,26 @@ IMG_FILE_RP=$(realpath "$IMG_FILE")
 printf "INFO: copy files to part2, this can take a long time\n"
 # avoid to double quote $MNT_OPT: arg must be unset if MNT_OPT is an empty string
 mount ${MNT_OPT} "$LOOP_ROOT" "$MNT_ROOT" \
-  && rsync -axX --numeric-ids --exclude=/boot/* --exclude="$IMG_FILE_RP" "$ROOT_PATH"/. "$MNT_ROOT"/. \
-  && sync && printf "INFO: copy OK\n" && umount "$MNT_ROOT"
+  && rsync -aAxX --numeric-ids --exclude=/boot/* --exclude="$IMG_FILE_RP" "$ROOT_PATH"/. "$MNT_ROOT"/. \
+  && sync && printf "INFO: copy OK\n" \
+  && umount "$MNT_ROOT"
 rmdir "$MNT_ROOT"
 sleep 1
 losetup -d "$LOOP_ROOT"
+printf "INFO: \"%s\" build (size=%s MB)\n" "$IMG_FILE" "$IMG_SIZE"
 
-# end message
-printf "INFO: %s build (size=%s MB)\n" "$IMG_FILE" "$IMG_SIZE"
+# gzip
+if [ $GZIP -eq 1 ]
+then
+    printf "INFO: gzip %s\n" "$IMG_FILE"
+    gzip "$IMG_FILE"
+fi
+
+# xz
+if [ $XZ -eq 1 ]
+then
+    printf "INFO: xz %s\n" "$IMG_FILE"
+    xz "$IMG_FILE"
+fi
+
 exit 0

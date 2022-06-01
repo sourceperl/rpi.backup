@@ -61,7 +61,7 @@ locally to a remote host with ssh :
 sudo mkdir -p /mnt/ssh/
 sudo sshfs -o allow_other,default_permissions pi@192.168.1.10:/home/pi/ /mnt/ssh/
 
-# build image to remote file system, name scheme is hostname-ddmmyyyy.img
+# build image to remote file system, name scheme is hostname-yyyymmdd.img
 sudo rpi-img-maker /boot / /mnt/ssh/`hostname`-`date +"%Y%m%d"`.img
 
 # unmount remote file system
