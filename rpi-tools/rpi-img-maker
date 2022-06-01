@@ -12,6 +12,7 @@
 
 # vars
 NAME=$(basename "$0")
+VERSION='0.1'
 
 # flags
 AUTO=0
@@ -21,7 +22,7 @@ GZIP=0
 XZ=0
 
 # parse optionals args
-while getopts 'abfghx' OPTION
+while getopts 'abfghvx' OPTION
 do
     case $OPTION in
     a)
@@ -36,17 +37,22 @@ do
     g)
         GZIP=1
         ;;
+    v)
+        printf "version: %s\n" "$VERSION"
+        exit 0
+        ;;
     x)
         XZ=1
         ;;
     h)
-        printf "Usage: %s: [-h] [-a] [-b] [-f] [-g] [-x] BOOT_DIR ROOT_DIR IMAGE_FILE\n" "$NAME"
+        printf "Usage: %s: [-h] [-a] [-b] [-f] [-g] [-v] [-x] BOOT_DIR ROOT_DIR IMAGE_FILE\n" "$NAME"
         printf "\n"
         printf "  -h    print this help message\n"
         printf "  -a    auto-mode, fix args to \"/boot / hostname-yyyymmdd.img\"\n"
         printf "  -b    use btrfs file system for 2nd part instead of default ext4\n"
         printf "  -f    write img file even if file already exist\n"
         printf "  -g    gzip img file\n"
+        printf "  -v    show current version of this tool\n"
         printf "  -x    xz img file\n"
         exit 0
         ;;
@@ -111,16 +117,18 @@ PUUID=$(echo "$FSTAB_BOOT_ID" | awk -v RS=" " '/^PARTUUID=/ {print substr($0,10)
 # UUID_BOOT=$(echo $FSTAB_BOOT_ID | awk -v RS=" " '/^UUID=/ {print substr($0,10)}')
 # UUID_ROOT=$(echo $FSTAB_ROOT_ID | awk -v RS=" " '/^UUID=/ {print substr($0,10)}')
 
-# search root in cmdline.txt file
+# search root ID in cmdline.txt file
 CMDLINE=$(realpath "$BOOT_PATH"/cmdline.txt)
 printf "INFO: looking for cmdline.txt at \"%s\"\n" "$CMDLINE"
 CMDLINE_ROOT_ID=$(cat "$CMDLINE" | awk -v RS=" " '/^root=/ {print substr($0,6)}')
 printf "INFO: in cmdline.txt kernel boot with \"%s\" root fs\n" "$CMDLINE_ROOT_ID"
 
-# init image file (zero padded)
-IMG_SIZE=$(("$ROOT_SIZE" + 64 + 512))
+# init an image file (25% bigger than root + boot fs)
+IMG_SIZE=$((("$ROOT_SIZE" + 64) * 125 / 100))
 printf "INFO: start %s MB image build, please wait\n" "$IMG_SIZE"
-if dd if=/dev/zero of="$IMG_FILE" bs=1M count="$IMG_SIZE" &> /dev/null;
+# replace dd by faster fallocate
+# if dd if=/dev/zero of="$IMG_FILE" bs=1M count="$IMG_SIZE" &> /dev/null;
+if fallocate -l "$IMG_SIZE"M "$IMG_FILE";
 then
   printf "INFO: init of file %s OK\n" "$IMG_FILE"
 else
@@ -146,9 +154,13 @@ then
     losetup -d "$LOOP_IMG"
 fi
 
-# boot: map loopback, format, mount, copy, unmount, release loopback
+# boot part
+# create a fat partition from sector 8192 to 137215 (size of 129064 sectors) into image file
 LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*129024)) --show --find "$IMG_FILE")
-mkfs.fat -n "boot" "$LOOP_BOOT" > /dev/null && printf "INFO: format part1 in fat OK\n"
+# format and set "boot" as volume name
+mkfs.fat -n "boot" "$LOOP_BOOT" > /dev/null \
+  && printf "INFO: format part1 in fat OK\n"
+# mount fat filesystem and copy files to it
 MNT_BOOT=$(mktemp -d)
 printf "INFO: copy files to part1\n"
 mount "$LOOP_BOOT" "$MNT_BOOT" \
@@ -159,19 +171,25 @@ rmdir "$MNT_BOOT"
 sleep 1
 losetup -d "$LOOP_BOOT"
 
-# root: map loopback, format, mount, copy, unmount, release loopback
+# root part
+# create an ext4 or btrfs partition from sector 137216 to the end of the image file
 LOOP_ROOT=$(losetup --offset $((512*137216)) --show --find "$IMG_FILE")
 MNT_OPT=''
 if [ $BTRFS -eq 1 ]
 then
-    mkfs.btrfs "$LOOP_ROOT" > /dev/null && printf "INFO: format part2 in btrfs OK\n"
+    mkfs.btrfs "$LOOP_ROOT" > /dev/null \
+      && printf "INFO: format part2 in btrfs OK\n"
+    # specific mount option for ButterFS
     MNT_OPT='-o compress'
 else
-    mkfs.ext4 "$LOOP_ROOT" > /dev/null && printf "INFO: format part2 in ext4 OK\n"
+    mkfs.ext4 "$LOOP_ROOT" > /dev/null \
+      && printf "INFO: format part2 in ext4 OK\n"
 fi
+# mount the ext4/btrfs filesystem and copy files on it
 MNT_ROOT=$(mktemp -d)
 IMG_FILE_RP=$(realpath "$IMG_FILE")
 printf "INFO: copy files to part2, this can take a long time\n"
+# mount ext4/btrfs filesystem to copy files to it
 # avoid to double quote $MNT_OPT: arg must be unset if MNT_OPT is an empty string
 mount ${MNT_OPT} "$LOOP_ROOT" "$MNT_ROOT" \
   && rsync -aAxX --numeric-ids --exclude=/boot/* --exclude="$IMG_FILE_RP" "$ROOT_PATH"/. "$MNT_ROOT"/. \
