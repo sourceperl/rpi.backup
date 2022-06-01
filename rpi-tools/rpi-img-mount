@@ -32,16 +32,15 @@ IMG_FILE=$1
 [ $# -ne 1 ] && { printf "ERROR: %s needs 1 arg\n" "$NAME" 1>&2; exit 1; }
 [ ! -f "$IMG_FILE" ] && { printf "ERROR: file \"%s\" not exist\n" "$IMG_FILE" 1>&2; exit 1; }
 
-# mount image file
-printf "INFO: mount image file \"%s\"\n" "$IMG_FILE"
+# mount image file to a tmp dir
 CUR_DIR=$(pwd)
 TMP_DIR=$(mktemp -d --tmpdir="$CUR_DIR")
-printf "INFO: create tmp directory \"%s\"\n" "$TMP_DIR"
+printf "INFO: tmp directory created \"%s\"\n" "$TMP_DIR"
 LOOP=$(losetup --show -fP "${IMG_FILE}")
-printf "INFO: map image file to \"%s\"\n" "$LOOP"
+printf "INFO: map image file \"%s\" to \"%s\"\n" "$IMG_FILE" "$LOOP"
 mount "$LOOP"p2 "$TMP_DIR" \
   && mount "$LOOP"p1 "$TMP_DIR"/boot/ \
-  && printf "INFO: mount tmp directory OK\n"
+  && printf "INFO: mount tmp directory to \"%s\" OK\n" "$LOOP"
 # open a shell session in the tmp dir
 printf "INFO: open bash session to image file (root fs is mount at %s) \n" "$TMP_DIR"
 printf "INFO: enter \"exit\" to quit this session and unmount image\n"
@@ -49,11 +48,16 @@ cd "$TMP_DIR" && bash
 
 # cleanup
 cd "$CUR_DIR" \
-  && umount "$TMP_DIR"/boot/ \
-  && umount "$TMP_DIR" \
-  && printf "INFO: unmount of image file OK\n" \
-  && rmdir "$TMP_DIR" \
-  && printf "INFO: remove of tmp directory OK\n"
+  && printf "INFO: return to current directory\n"
+umount "$TMP_DIR"/boot/ \
+  && printf "INFO: unmount of boot part OK\n" \
+  || printf "ERROR: unable to unmount boot part\n"
+umount "$TMP_DIR" \
+  && printf "INFO: unmount of root part OK\n" \
+  || printf "ERROR: unable to unmount root part\n"
+rmdir "$TMP_DIR" \
+  && printf "INFO: remove tmp directory OK\n" \
+  || printf "ERROR: unable to remove tmp directory\n"
 losetup -d "$LOOP"
 
 exit 0
