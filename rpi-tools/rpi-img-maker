@@ -12,7 +12,7 @@
 
 # vars
 NAME=$(basename "$0")
-VERSION='0.1'
+VERSION='0.2'
 
 # flags
 AUTO=0
@@ -98,7 +98,7 @@ fi
 # detect size need for root filesystem
 BOOT_SIZE=$(du -smx "$BOOT_PATH" | cut -f1)
 printf "INFO: boot size %s MB\n" "$BOOT_SIZE"
-[ "$BOOT_SIZE" -gt 64 ] && { printf "ERROR: boot dir is oversized (more than 64MB)\n" 1>&2; exit 2; }
+[ "$BOOT_SIZE" -gt 256 ] && { printf "ERROR: boot dir is oversized (more than 256MB)\n" 1>&2; exit 2; }
 ROOT_SIZE=$(du -smx "$ROOT_PATH" | cut -f1)
 printf "INFO: root size %s MB\n" "$ROOT_SIZE"
 [ "$ROOT_SIZE" -gt 8192 ] && { printf "ERROR: root dir is oversized (more than 8GB)\n" 1>&2; exit 2; }
@@ -124,7 +124,7 @@ CMDLINE_ROOT_ID=$(cat "$CMDLINE" | awk -v RS=" " '/^root=/ {print substr($0,6)}'
 printf "INFO: in cmdline.txt kernel boot with \"%s\" root fs\n" "$CMDLINE_ROOT_ID"
 
 # init an image file (25% bigger than root + boot fs)
-IMG_SIZE=$((("$ROOT_SIZE" + 64) * 125 / 100))
+IMG_SIZE=$((("$ROOT_SIZE" + 256) * 125 / 100))
 printf "INFO: start %s MB image build, please wait\n" "$IMG_SIZE"
 # replace dd by faster fallocate
 # if dd if=/dev/zero of="$IMG_FILE" bs=1M count="$IMG_SIZE" &> /dev/null;
@@ -137,12 +137,12 @@ else
 fi
 
 # create 2 partitions on it (for boot and root fs, a sector is 512 bytes wide)
-# first for boot (FAT16): fix 64 MB sized from sector 8192 to 137215
-# second for root fs (ext4): from sector 137216 to end of image
+# first for boot (FAT32): fix 256 MB sized from sector 8192 to 532479
+# second for root fs (ext4): from sector 532480 to end of image
 printf "INFO: create boot (part1) and root (part2) partitions\n"
-parted "$IMG_FILE" mklabel msdos > /dev/null || { printf "ERROR: make part table error\n" 1>&2; exit 1; }
-parted "$IMG_FILE" mkpart primary fat16 8192s 137215s > /dev/null || { printf "ERROR: make part1 error\n" 1>&2; exit 1; }
-parted "$IMG_FILE" -- mkpart primary ext4 137216s -1s > /dev/null || { printf "ERROR: make part2 error\n" 1>&2; exit 1; }
+parted -s "$IMG_FILE" mklabel msdos > /dev/null || { printf "ERROR: make part table error\n" 1>&2; exit 1; }
+parted -s "$IMG_FILE" mkpart primary fat32 8192s 532479s > /dev/null || { printf "ERROR: make part1 error\n" 1>&2; exit 1; }
+parted -s "$IMG_FILE" -- mkpart primary ext4 532480s -1s > /dev/null || { printf "ERROR: make part2 error\n" 1>&2; exit 1; }
 
 # add PUUID to image file (if use by fstab)
 if [ -n "$PUUID" ]
@@ -155,34 +155,34 @@ then
 fi
 
 # boot part
-# create a fat partition from sector 8192 to 137215 (size of 129064 sectors) into image file
-LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*129024)) --show --find "$IMG_FILE")
+# create a fat partition from sector 8192 to 532479 (size of 524288 sectors) into image file
+LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*524288)) --show --find "$IMG_FILE")
 # format and set "boot" as volume name
-mkfs.fat -n "boot" "$LOOP_BOOT" > /dev/null \
-  && printf "INFO: format part1 in fat OK\n"
+mkfs.vfat -n "boot" "$LOOP_BOOT" > /dev/null \
+  && printf "INFO: format part1 in fat32 OK\n"
 # mount fat filesystem and copy files to it
 MNT_BOOT=$(mktemp -d)
 printf "INFO: copy files to part1\n"
 mount "$LOOP_BOOT" "$MNT_BOOT" \
-  && rsync -aAxX --numeric-ids "$BOOT_PATH"/. "$MNT_BOOT"/. \
+  && rsync -rx "$BOOT_PATH"/. "$MNT_BOOT"/. \
   && sync && printf "INFO: copy OK\n" \
-  && umount "$MNT_BOOT"
-rmdir "$MNT_BOOT"
 sleep 1
+umount "$MNT_BOOT"
+rmdir "$MNT_BOOT"
 losetup -d "$LOOP_BOOT"
 
 # root part
-# create an ext4 or btrfs partition from sector 137216 to the end of the image file
-LOOP_ROOT=$(losetup --offset $((512*137216)) --show --find "$IMG_FILE")
+# create an ext4 or btrfs partition from sector 532480 to the end of the image file
+LOOP_ROOT=$(losetup --offset $((512*532480)) --show --find "$IMG_FILE")
 MNT_OPT=''
 if [ $BTRFS -eq 1 ]
 then
-    mkfs.btrfs "$LOOP_ROOT" > /dev/null \
+    mkfs.btrfs -n "rootfs" "$LOOP_ROOT" > /dev/null \
       && printf "INFO: format part2 in btrfs OK\n"
     # specific mount option for ButterFS
     MNT_OPT='-o compress'
 else
-    mkfs.ext4 "$LOOP_ROOT" > /dev/null \
+    mkfs.ext4 -n "rootfs" "$LOOP_ROOT" > /dev/null \
       && printf "INFO: format part2 in ext4 OK\n"
 fi
 # mount the ext4/btrfs filesystem and copy files on it
