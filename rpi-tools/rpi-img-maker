@@ -177,12 +177,12 @@ LOOP_ROOT=$(losetup --offset $((512*532480)) --show --find "$IMG_FILE")
 MNT_OPT=''
 if [ $BTRFS -eq 1 ]
 then
-    mkfs.btrfs -n "rootfs" "$LOOP_ROOT" > /dev/null \
+    mkfs.btrfs -L "rootfs" "$LOOP_ROOT" > /dev/null \
       && printf "INFO: format part2 in btrfs OK\n"
     # specific mount option for ButterFS
     MNT_OPT='-o compress'
 else
-    mkfs.ext4 -n "rootfs" "$LOOP_ROOT" > /dev/null \
+    mkfs.ext4 -L "rootfs" "$LOOP_ROOT" > /dev/null \
       && printf "INFO: format part2 in ext4 OK\n"
 fi
 # mount the ext4/btrfs filesystem and copy files on it
