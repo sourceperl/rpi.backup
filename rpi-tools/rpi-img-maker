@@ -158,7 +158,7 @@ fi
 # create a fat partition from sector 8192 to 532479 (size of 524288 sectors) into image file
 LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*524288)) --show --find "$IMG_FILE")
 # format and set "boot" as volume name
-mkfs.vfat -n "boot" "$LOOP_BOOT" > /dev/null \
+mkfs.vfat -F 32 -n "boot" "$LOOP_BOOT" > /dev/null \
   && printf "INFO: format part1 in fat32 OK\n"
 # mount fat filesystem and copy files to it
 MNT_BOOT=$(mktemp -d)
