@@ -1,8 +1,8 @@
 #!/bin/bash
 # This script auto-build an image file for Raspberry Pi SD card
-# -> build standard 2 partitions cards: fat16/ext4 or fat16/btrfs
+# -> build standard 2 partitions cards: fat32/ext4 or fat32/btrfs
 # -> usage of btrfs for linux root filesytem need custom kernel (default one don't have btrfs build-in)
-#    see here : https://www.raspberrypi.org/documentation/linux/kernel/building.md for instruction
+#    see here : https://www.raspberrypi.com/documentation/computers/linux_kernel.html for instruction
 #
 # you can use it like this :
 #     rpi-img-maker BOOT_DIR ROOT_DIR IMAGE_FILE
@@ -12,7 +12,7 @@
 
 # vars
 NAME=$(basename "$0")
-VERSION='0.2'
+VERSION='0.3.dev'
 
 # flags
 AUTO=0
@@ -63,7 +63,10 @@ shift $(("$OPTIND" - 1))
 # parse fixed args
 if [ $AUTO -eq 1 ];
 then
-  BOOT_PATH="/boot"
+  # since bookworm default boot partition mount point is /boot/firmware
+  BOOT_PATH="/boot/firmware"
+  # apply default mount point if /boot/firmware not exist
+  [ ! -d "$BOOT_PATH" ] && BOOT_PATH="/boot"
   ROOT_PATH="/"
   IMG_FILE="$(hostname)"-"$(date +"%Y%m%d")".img
 else
@@ -101,13 +104,13 @@ printf "INFO: boot size %s MB\n" "$BOOT_SIZE"
 [ "$BOOT_SIZE" -gt 256 ] && { printf "ERROR: boot dir is oversized (more than 256MB)\n" 1>&2; exit 2; }
 ROOT_SIZE=$(du -smx "$ROOT_PATH" | cut -f1)
 printf "INFO: root size %s MB\n" "$ROOT_SIZE"
-[ "$ROOT_SIZE" -gt 8192 ] && { printf "ERROR: root dir is oversized (more than 8GB)\n" 1>&2; exit 2; }
+[ "$ROOT_SIZE" -gt 32768 ] && { printf "ERROR: root dir is oversized (more than 32GB)\n" 1>&2; exit 2; }
 
 # search mount string for boot and root in fstab file
 FSTAB=$(realpath "$ROOT_PATH"/etc/fstab)
 printf "INFO: looking for fstab at \"%s\"\n" "$FSTAB"
 [ ! -f "$FSTAB" ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
-FSTAB_BOOT_ID=$(cat "$FSTAB" | grep -v '^#' | grep '\s/boot\s' | awk '{ print $1 }')
+FSTAB_BOOT_ID=$(cat "$FSTAB" | grep -v '^#' | grep '\s/boot\s\|\s/boot/firmware\s' | awk '{ print $1 }')
 FSTAB_ROOT_ID=$(cat "$FSTAB" | grep -v '^#' | grep '\s/\s' | awk '{ print $1 }')
 printf "INFO: in fstab boot is mount with \"%s\"\n" "$FSTAB_BOOT_ID"
 printf "INFO: in fstab root is mount with \"%s\"\n" "$FSTAB_ROOT_ID"
@@ -124,7 +127,8 @@ CMDLINE_ROOT_ID=$(cat "$CMDLINE" | awk -v RS=" " '/^root=/ {print substr($0,6)}'
 printf "INFO: in cmdline.txt kernel boot with \"%s\" root fs\n" "$CMDLINE_ROOT_ID"
 
 # init an image file (25% bigger than root + boot fs)
-IMG_SIZE=$((("$ROOT_SIZE" + 256) * 125 / 100))
+#IMG_SIZE=$((("$ROOT_SIZE" + 256) * 125 / 100))
+IMG_SIZE=$((("$ROOT_SIZE" + 512) * 125 / 100))
 printf "INFO: start %s MB image build, please wait\n" "$IMG_SIZE"
 # replace dd by faster fallocate
 # if dd if=/dev/zero of="$IMG_FILE" bs=1M count="$IMG_SIZE" &> /dev/null;
@@ -137,12 +141,18 @@ else
 fi
 
 # create 2 partitions on it (for boot and root fs, a sector is 512 bytes wide)
-# first for boot (FAT32): fix 256 MB sized from sector 8192 to 532479
-# second for root fs (ext4): from sector 532480 to end of image
 printf "INFO: create boot (part1) and root (part2) partitions\n"
 parted -s "$IMG_FILE" mklabel msdos > /dev/null || { printf "ERROR: make part table error\n" 1>&2; exit 1; }
-parted -s "$IMG_FILE" mkpart primary fat32 8192s 532479s > /dev/null || { printf "ERROR: make part1 error\n" 1>&2; exit 1; }
-parted -s "$IMG_FILE" -- mkpart primary ext4 532480s -1s > /dev/null || { printf "ERROR: make part2 error\n" 1>&2; exit 1; }
+# first for boot (FAT32): fix 256 MB sized from sector 8192 to 532479
+#parted -s "$IMG_FILE" mkpart primary fat32 8192s 532479s > /dev/null || { printf "ERROR: make part1 error\n" 1>&2; exit 1; }
+# second for root fs (ext4): from sector 532480 to end of image
+#parted -s "$IMG_FILE" -- mkpart primary ext4 532480s -1s > /dev/null || { printf "ERROR: make part2 error\n" 1>&2; exit 1; }
+
+# now produce a 512 MB boot partition (the old one was 256 MB)
+# first for boot (FAT32): fix 512 MB sized from sector 8192 to 1056767
+parted -s "$IMG_FILE" mkpart primary fat32 8192s 1056767s > /dev/null || { printf "ERROR: make part1 error\n" 1>&2; exit 1; }
+# second for root fs (ext4): from sector 1056768 to end of image
+parted -s "$IMG_FILE" -- mkpart primary ext4 1056768s -1s > /dev/null || { printf "ERROR: make part2 error\n" 1>&2; exit 1; }
 
 # add PUUID to image file (if use by fstab)
 if [ -n "$PUUID" ]
@@ -156,7 +166,9 @@ fi
 
 # boot part
 # create a fat partition from sector 8192 to 532479 (size of 524288 sectors) into image file
-LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*524288)) --show --find "$IMG_FILE")
+#LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*524288)) --show --find "$IMG_FILE")
+# create a fat partition from sector 8192 to 1056767 (size of 1048576 sectors) into image file
+LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*1048576)) --show --find "$IMG_FILE")
 # format and set "boot" as volume name
 mkfs.vfat -F 32 -n "boot" "$LOOP_BOOT" > /dev/null \
   && printf "INFO: format part1 in fat32 OK\n"
@@ -173,7 +185,9 @@ losetup -d "$LOOP_BOOT"
 
 # root part
 # create an ext4 or btrfs partition from sector 532480 to the end of the image file
-LOOP_ROOT=$(losetup --offset $((512*532480)) --show --find "$IMG_FILE")
+#LOOP_ROOT=$(losetup --offset $((512*532480)) --show --find "$IMG_FILE")
+# create an ext4 or btrfs partition from sector 1056768 to the end of the image file
+LOOP_ROOT=$(losetup --offset $((512*1056768)) --show --find "$IMG_FILE")
 MNT_OPT=''
 if [ $BTRFS -eq 1 ]
 then
