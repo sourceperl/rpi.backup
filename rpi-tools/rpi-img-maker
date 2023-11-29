@@ -60,21 +60,6 @@ do
 done
 shift $(("$OPTIND" - 1))
 
-# parse fixed args
-if [ $AUTO -eq 1 ];
-then
-  # since bookworm default boot partition mount point is /boot/firmware
-  BOOT_PATH="/boot/firmware"
-  # apply default mount point if /boot/firmware not exist
-  [ ! -d "$BOOT_PATH" ] && BOOT_PATH="/boot"
-  ROOT_PATH="/"
-  IMG_FILE="$(hostname)"-"$(date +"%Y%m%d")".img
-else
-  BOOT_PATH=$1
-  ROOT_PATH=$2
-  IMG_FILE=$3
-fi
-
 # some checks
 [ $EUID -ne 0 ] && { printf "ERROR: %s needs to be run by root\n" "$NAME" 1>&2; exit 1; }
 [ $GZIP -eq 1 ] && [ $XZ -eq 1 ] && { printf "ERROR: cannot have -g and -x set at same time\n" 1>&2; exit 1; }
@@ -86,9 +71,30 @@ fi
 [ $GZIP -eq 1 ] && [ ! -x "$(command -v gzip)" ] && { printf "ERROR: gzip not found\n" 1>&2; exit 1; }
 [ $XZ -eq 1 ] && [ ! -x "$(command -v xz)" ] && { printf "ERROR: xz not found\n" 1>&2; exit 1; }
 [ $AUTO -ne 1 ] && [ $# -ne 3 ] && { printf "ERROR: %s needs 3 args\n" "$NAME" 1>&2; exit 1; }
+
+# define path to boot and root system part
+if [ $AUTO -eq 1 ];
+then
+  # when auto mode is set
+  # auto set BOOT_PATH ROOT_PATH IMG_FILE
+  # since bookworm default boot partition mount point is /boot/firmware
+  BOOT_PATH="/boot/firmware"
+  # apply default mount point if /boot/firmware not exist
+  [ ! -d "$BOOT_PATH" ] && BOOT_PATH="/boot"
+  ROOT_PATH="/"
+  IMG_FILE="$(hostname)"-"$(date +"%Y%m%d")".img
+else
+  # when auto mode is unset
+  # extract BOOT_PATH ROOT_PATH IMG_FILE from command line
+  BOOT_PATH=$1
+  ROOT_PATH=$2
+  IMG_FILE=$3
+fi
+# check boot and root path exist
 [ ! -d "$BOOT_PATH" ] && { printf "ERROR: BOOT_DIR invalid\n" 1>&2; exit 1; }
 [ ! -d "$ROOT_PATH" ] && { printf "ERROR: ROOT_DIR invalid\n" 1>&2; exit 1; }
 
+# check if image file already exist
 if [ -f "$IMG_FILE" ] && [ $FORCE -ne 1 ]
 then
     read -p "WARN: image file $IMG_FILE already exist, confirm overwrite ? (y/n)" -r
@@ -100,10 +106,10 @@ fi
 
 # detect size need for root filesystem
 BOOT_SIZE=$(du -smx "$BOOT_PATH" | cut -f1)
-printf "INFO: boot size %s MB\n" "$BOOT_SIZE"
+printf "INFO: boot part size %s MB\n" "$BOOT_SIZE"
 [ "$BOOT_SIZE" -gt 256 ] && { printf "ERROR: boot dir is oversized (more than 256MB)\n" 1>&2; exit 2; }
 ROOT_SIZE=$(du -smx "$ROOT_PATH" | cut -f1)
-printf "INFO: root size %s MB\n" "$ROOT_SIZE"
+printf "INFO: root part size %s MB\n" "$ROOT_SIZE"
 [ "$ROOT_SIZE" -gt 32768 ] && { printf "ERROR: root dir is oversized (more than 32GB)\n" 1>&2; exit 2; }
 
 # search mount string for boot and root in fstab file
