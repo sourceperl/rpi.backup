@@ -34,10 +34,10 @@ sudo ./rpi-tools/setup-rpi-tools.sh
 ## Tool rpi-img-maker
 
 This script auto-build an image file for Raspberry Pi SD card. Build standard 2 
-partitions cards: fat16/ext4 or fat16/btrfs
+partitions cards: fat32/ext4 or fat32/btrfs
 
 Usage of btrfs for linux root filesytem need custom kernel. See: 
-https://www.raspberrypi.org/documentation/linux/kernel/building.md for 
+https://www.raspberrypi.com/documentation/computers/linux_kernel.html for 
 instructions on custom kernel building and see also "Custom kernel" below.
 
 ### Usage

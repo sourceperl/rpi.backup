@@ -107,17 +107,17 @@ fi
 # detect size need for root filesystem
 BOOT_SIZE=$(du -smx "$BOOT_PATH" | cut -f1)
 printf "INFO: boot part size %s MB\n" "$BOOT_SIZE"
-[ "$BOOT_SIZE" -gt 256 ] && { printf "ERROR: boot dir is oversized (more than 256MB)\n" 1>&2; exit 2; }
+[ "$BOOT_SIZE" -gt 512 ] && { printf "ERROR: boot dir is oversized (more than 512MB)\n" 1>&2; exit 2; }
 ROOT_SIZE=$(du -smx "$ROOT_PATH" | cut -f1)
 printf "INFO: root part size %s MB\n" "$ROOT_SIZE"
 [ "$ROOT_SIZE" -gt 32768 ] && { printf "ERROR: root dir is oversized (more than 32GB)\n" 1>&2; exit 2; }
 
 # search mount string for boot and root in fstab file
-FSTAB=$(realpath "$ROOT_PATH"/etc/fstab)
-printf "INFO: looking for fstab at \"%s\"\n" "$FSTAB"
-[ ! -f "$FSTAB" ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
-FSTAB_BOOT_ID=$(cat "$FSTAB" | grep -v '^#' | grep '\s/boot\s\|\s/boot/firmware\s' | awk '{ print $1 }')
-FSTAB_ROOT_ID=$(cat "$FSTAB" | grep -v '^#' | grep '\s/\s' | awk '{ print $1 }')
+FSTAB_PATH=$(realpath "$ROOT_PATH"/etc/fstab)
+printf "INFO: looking for fstab at \"%s\"\n" "$FSTAB_PATH"
+[ ! -f "$FSTAB_PATH" ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
+FSTAB_BOOT_ID=$(cat "$FSTAB_PATH" | grep -v '^#' | grep '\s/boot\s\|\s/boot/firmware\s' | awk '{ print $1 }')
+FSTAB_ROOT_ID=$(cat "$FSTAB_PATH" | grep -v '^#' | grep '\s/\s' | awk '{ print $1 }')
 printf "INFO: in fstab boot is mount with \"%s\"\n" "$FSTAB_BOOT_ID"
 printf "INFO: in fstab root is mount with \"%s\"\n" "$FSTAB_ROOT_ID"
 
@@ -176,7 +176,7 @@ fi
 # create a fat partition from sector 8192 to 1056767 (size of 1048576 sectors) into image file
 LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*1048576)) --show --find "$IMG_FILE")
 # format and set "boot" as volume name
-mkfs.vfat -F 32 -n "boot" "$LOOP_BOOT" > /dev/null \
+mkfs.vfat -F 32 -n "bootfs" "$LOOP_BOOT" > /dev/null \
   && printf "INFO: format part1 in fat32 OK\n"
 # mount fat filesystem and copy files to it
 MNT_BOOT=$(mktemp -d)
