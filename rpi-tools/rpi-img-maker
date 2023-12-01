@@ -75,24 +75,17 @@ shift $(("$OPTIND" - 1))
 # define path to boot and root system part
 if [ $AUTO -eq 1 ];
 then
-  # when auto mode is set
-  # auto set BOOT_PATH ROOT_PATH IMG_FILE
-  # since bookworm default boot partition mount point is /boot/firmware
-  BOOT_PATH="/boot/firmware"
-  # apply default mount point if /boot/firmware not exist
-  [ ! -d "$BOOT_PATH" ] && BOOT_PATH="/boot"
+  # when auto mode is set: auto set BOOT_PATH ROOT_PATH IMG_FILE
+  # boot path will be fill at fstab extract step
+  BOOT_PATH=""
   ROOT_PATH="/"
   IMG_FILE="$(hostname)"-"$(date +"%Y%m%d")".img
 else
-  # when auto mode is unset
-  # extract BOOT_PATH ROOT_PATH IMG_FILE from command line
+  # when auto mode is unset: extract BOOT_PATH ROOT_PATH IMG_FILE from command line
   BOOT_PATH=$1
   ROOT_PATH=$2
   IMG_FILE=$3
 fi
-# check boot and root path exist
-[ ! -d "$BOOT_PATH" ] && { printf "ERROR: BOOT_DIR invalid\n" 1>&2; exit 1; }
-[ ! -d "$ROOT_PATH" ] && { printf "ERROR: ROOT_DIR invalid\n" 1>&2; exit 1; }
 
 # check if image file already exist
 if [ -f "$IMG_FILE" ] && [ $FORCE -ne 1 ]
@@ -104,18 +97,29 @@ then
     fi
 fi
 
+# extract boot mount point from fstab
+FSTAB_PATH=$(realpath "$ROOT_PATH"/etc/fstab)
+[ ! -f "$FSTAB_PATH" ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
+printf "INFO: looking for fstab at \"%s\"\n" "$FSTAB_PATH"
+BOOT_MNT_DIR=$(cat "$FSTAB_PATH" | grep -v '^#' | grep '/boot' | awk '{print $2}')
+printf "INFO: fstab have boot mountpoint set to \"%s\"\n" "$BOOT_MNT_DIR"
+
+# if boot path is empty set it with fstab boot mountpoint
+[ -z "$BOOT_PATH" ] && BOOT_PATH="$BOOT_MNT_DIR"
+
+# check boot and root path exist
+[ ! -d "$BOOT_PATH" ] && { printf "ERROR: BOOT_DIR invalid\n" 1>&2; exit 1; }
+[ ! -d "$ROOT_PATH" ] && { printf "ERROR: ROOT_DIR invalid\n" 1>&2; exit 1; }
+
 # detect size need for root filesystem
 BOOT_SIZE=$(du -smx "$BOOT_PATH" | cut -f1)
-printf "INFO: boot part size %s MB\n" "$BOOT_SIZE"
+printf "INFO: boot part size %s MB at \"%s\"\n" "$BOOT_SIZE" "$BOOT_PATH"
 [ "$BOOT_SIZE" -gt 512 ] && { printf "ERROR: boot dir is oversized (more than 512MB)\n" 1>&2; exit 2; }
 ROOT_SIZE=$(du -smx "$ROOT_PATH" | cut -f1)
-printf "INFO: root part size %s MB\n" "$ROOT_SIZE"
+printf "INFO: root part size %s MB at \"%s\"\n" "$ROOT_SIZE" "$ROOT_PATH"
 [ "$ROOT_SIZE" -gt 32768 ] && { printf "ERROR: root dir is oversized (more than 32GB)\n" 1>&2; exit 2; }
 
 # search mount string for boot and root in fstab file
-FSTAB_PATH=$(realpath "$ROOT_PATH"/etc/fstab)
-printf "INFO: looking for fstab at \"%s\"\n" "$FSTAB_PATH"
-[ ! -f "$FSTAB_PATH" ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
 FSTAB_BOOT_ID=$(cat "$FSTAB_PATH" | grep -v '^#' | grep '\s/boot\s\|\s/boot/firmware\s' | awk '{ print $1 }')
 FSTAB_ROOT_ID=$(cat "$FSTAB_PATH" | grep -v '^#' | grep '\s/\s' | awk '{ print $1 }')
 printf "INFO: in fstab boot is mount with \"%s\"\n" "$FSTAB_BOOT_ID"
@@ -132,9 +136,9 @@ printf "INFO: looking for cmdline.txt at \"%s\"\n" "$CMDLINE"
 CMDLINE_ROOT_ID=$(cat "$CMDLINE" | awk -v RS=" " '/^root=/ {print substr($0,6)}')
 printf "INFO: in cmdline.txt kernel boot with \"%s\" root fs\n" "$CMDLINE_ROOT_ID"
 
-# init an image file (25% bigger than root + boot fs)
+# init an image file (30% bigger than root + boot fs)
 #IMG_SIZE=$((("$ROOT_SIZE" + 256) * 125 / 100))
-IMG_SIZE=$((("$ROOT_SIZE" + 512) * 125 / 100))
+IMG_SIZE=$((("$ROOT_SIZE" + 512) * 130 / 100))
 printf "INFO: start %s MB image build, please wait\n" "$IMG_SIZE"
 # replace dd by faster fallocate
 # if dd if=/dev/zero of="$IMG_FILE" bs=1M count="$IMG_SIZE" &> /dev/null;
@@ -176,17 +180,17 @@ fi
 # create a fat partition from sector 8192 to 1056767 (size of 1048576 sectors) into image file
 LOOP_BOOT=$(losetup --offset $((512*8192)) --sizelimit $((512*1048576)) --show --find "$IMG_FILE")
 # format and set "boot" as volume name
-mkfs.vfat -F 32 -n "bootfs" "$LOOP_BOOT" > /dev/null \
+mkfs.vfat -F 32 -n "bootfs" "$LOOP_BOOT" &> /dev/null \
   && printf "INFO: format part1 in fat32 OK\n"
 # mount fat filesystem and copy files to it
-MNT_BOOT=$(mktemp -d)
+TMP_BOOT_DIR=$(mktemp -d)
 printf "INFO: copy files to part1\n"
-mount "$LOOP_BOOT" "$MNT_BOOT" \
-  && rsync -rx "$BOOT_PATH"/. "$MNT_BOOT"/. \
+mount "$LOOP_BOOT" "$TMP_BOOT_DIR" &> /dev/null \
+  && rsync -rx "$BOOT_PATH"/. "$TMP_BOOT_DIR"/. \
   && sync && printf "INFO: copy OK\n" \
 sleep 1
-umount "$MNT_BOOT"
-rmdir "$MNT_BOOT"
+umount "$TMP_BOOT_DIR"
+rmdir "$TMP_BOOT_DIR"
 losetup -d "$LOOP_BOOT"
 
 # root part
@@ -194,28 +198,28 @@ losetup -d "$LOOP_BOOT"
 #LOOP_ROOT=$(losetup --offset $((512*532480)) --show --find "$IMG_FILE")
 # create an ext4 or btrfs partition from sector 1056768 to the end of the image file
 LOOP_ROOT=$(losetup --offset $((512*1056768)) --show --find "$IMG_FILE")
-MNT_OPT=''
+TMP_ROOT_MNT_OPT=''
 if [ $BTRFS -eq 1 ]
 then
-    mkfs.btrfs -L "rootfs" "$LOOP_ROOT" > /dev/null \
+    mkfs.btrfs -L "rootfs" "$LOOP_ROOT" &> /dev/null \
       && printf "INFO: format part2 in btrfs OK\n"
     # specific mount option for ButterFS
-    MNT_OPT='-o compress'
+    TMP_ROOT_MNT_OPT='-o compress'
 else
-    mkfs.ext4 -L "rootfs" "$LOOP_ROOT" > /dev/null \
+    mkfs.ext4 -L "rootfs" "$LOOP_ROOT" &> /dev/null \
       && printf "INFO: format part2 in ext4 OK\n"
 fi
 # mount the ext4/btrfs filesystem and copy files on it
-MNT_ROOT=$(mktemp -d)
+TMP_ROOT_DIR=$(mktemp -d)
 IMG_FILE_RP=$(realpath "$IMG_FILE")
 printf "INFO: copy files to part2, this can take a long time\n"
 # mount ext4/btrfs filesystem to copy files to it
-# avoid to double quote $MNT_OPT: arg must be unset if MNT_OPT is an empty string
-mount ${MNT_OPT} "$LOOP_ROOT" "$MNT_ROOT" \
-  && rsync -aAxX --numeric-ids --exclude=/boot/* --exclude="$IMG_FILE_RP" "$ROOT_PATH"/. "$MNT_ROOT"/. \
+# avoid to double quote $TMP_ROOT_MNT_OPT since arg must be unset if TMP_ROOT_MNT_OPT is an empty string
+mount ${TMP_ROOT_MNT_OPT} "$LOOP_ROOT" "$TMP_ROOT_DIR" &> /dev/null \
+  && rsync -aAxX --numeric-ids --exclude="$BOOT_MNT_DIR"/* --exclude="$IMG_FILE_RP" "$ROOT_PATH"/. "$TMP_ROOT_DIR"/. \
   && sync && printf "INFO: copy OK\n" \
-  && umount "$MNT_ROOT"
-rmdir "$MNT_ROOT"
+  && umount "$TMP_ROOT_DIR"
+rmdir "$TMP_ROOT_DIR"
 sleep 1
 losetup -d "$LOOP_ROOT"
 printf "INFO: \"%s\" build (size=%s MB)\n" "$IMG_FILE" "$IMG_SIZE"
