@@ -102,9 +102,9 @@ FSTAB_PATH=$(realpath "$ROOT_PATH"/etc/fstab)
 [ ! -f "$FSTAB_PATH" ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
 printf "INFO: looking for fstab at \"%s\"\n" "$FSTAB_PATH"
 BOOT_MNT_DIR=$(cat "$FSTAB_PATH" | grep -v '^#' | grep '/boot' | awk '{print $2}')
-printf "INFO: fstab have boot mountpoint set to \"%s\"\n" "$BOOT_MNT_DIR"
+printf "INFO: fstab have boot mount point set to \"%s\"\n" "$BOOT_MNT_DIR"
 
-# if boot path is empty set it with fstab boot mountpoint
+# if boot path is empty set it with fstab boot mount point
 [ -z "$BOOT_PATH" ] && BOOT_PATH="$BOOT_MNT_DIR"
 
 # check boot and root path exist
