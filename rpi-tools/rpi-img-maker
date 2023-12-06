@@ -187,7 +187,7 @@ TMP_BOOT_DIR=$(mktemp -d)
 printf "INFO: copy files to part1\n"
 mount "$LOOP_BOOT" "$TMP_BOOT_DIR" &> /dev/null \
   && rsync -rx "$BOOT_PATH"/. "$TMP_BOOT_DIR"/. \
-  && sync && printf "INFO: copy OK\n" \
+  && sync && printf "INFO: copy OK\n"
 sleep 1
 umount "$TMP_BOOT_DIR"
 rmdir "$TMP_BOOT_DIR"

@@ -32,15 +32,29 @@ IMG_FILE=$1
 [ $# -ne 1 ] && { printf "ERROR: %s needs 1 arg\n" "$NAME" 1>&2; exit 1; }
 [ ! -f "$IMG_FILE" ] && { printf "ERROR: file \"%s\" not exist\n" "$IMG_FILE" 1>&2; exit 1; }
 
-# mount image file to a tmp dir
+# create a temp directory
 CUR_DIR=$(pwd)
-TMP_DIR=$(mktemp -d --tmpdir="$CUR_DIR")
+TMP_DIR=$(mktemp -d)
 printf "INFO: tmp directory created \"%s\"\n" "$TMP_DIR"
-LOOP=$(losetup --show -fP "${IMG_FILE}")
-printf "INFO: map image file \"%s\" to \"%s\"\n" "$IMG_FILE" "$LOOP"
-mount "$LOOP"p2 "$TMP_DIR" \
-  && mount "$LOOP"p1 "$TMP_DIR"/boot/ \
-  && printf "INFO: mount tmp directory to \"%s\" OK\n" "$LOOP"
+
+# associate image file to a loop device
+LOOP_DEV=$(losetup --show -fP "${IMG_FILE}")
+printf "INFO: map image file \"%s\" to \"%s\"\n" "$IMG_FILE" "$LOOP_DEV"
+
+# mount 2nd part to a temp directory
+mount "${LOOP_DEV}p2" "$TMP_DIR" && printf "INFO: mount tmp directory to \"%s\" OK\n" "$LOOP_DEV"
+
+# extract boot mount point from fstab
+FSTAB_PATH=$(realpath "${TMP_DIR}/etc/fstab")
+[ ! -f "$FSTAB_PATH" ] && { printf "ERROR: root fs have no /etc/fstab\n" 1>&2; exit 1; }
+printf "INFO: looking for fstab at \"%s\"\n" "$FSTAB_PATH"
+FSTAB_BOOT_MNT=$(cat "$FSTAB_PATH" | grep -v '^#' | grep '/boot' | awk '{print $2}')
+printf "INFO: fstab have boot mount point set to \"%s\"\n" "$FSTAB_BOOT_MNT"
+
+# mount first part to
+BOOT_MNT_DIR=$(realpath "${TMP_DIR}/${FSTAB_BOOT_MNT}")
+mount "$LOOP_DEV"p1 "$BOOT_MNT_DIR" && printf "INFO: mount boot part to \"%s\" OK\n" "$BOOT_MNT_DIR"
+
 # open a shell session in the tmp dir
 printf "INFO: open bash session to image file (root fs is mount at %s) \n" "$TMP_DIR"
 printf "INFO: enter \"exit\" to quit this session and unmount image\n"
@@ -49,15 +63,23 @@ cd "$TMP_DIR" && bash
 # cleanup
 cd "$CUR_DIR" \
   && printf "INFO: return to current directory\n"
-umount "$TMP_DIR"/boot/ \
+# unmount bootfs
+umount "$BOOT_MNT_DIR" \
   && printf "INFO: unmount of boot part OK\n" \
   || printf "ERROR: unable to unmount boot part\n"
+# ensure bootfs unmount ok
+sleep 1
+# unmount rootfs
 umount "$TMP_DIR" \
   && printf "INFO: unmount of root part OK\n" \
   || printf "ERROR: unable to unmount root part\n"
+# remove tmp dir
 rmdir "$TMP_DIR" \
   && printf "INFO: remove tmp directory OK\n" \
   || printf "ERROR: unable to remove tmp directory\n"
-losetup -d "$LOOP"
+# detach loop device
+losetup -d "$LOOP_DEV" \
+  && printf "INFO: detach loop device OK\n" \
+  || printf "ERROR: unable to detach loop device\n"
 
 exit 0
