@@ -12,7 +12,7 @@
 
 # vars
 NAME=$(basename "$0")
-VERSION='0.3.dev'
+VERSION='0.3'
 
 # flags
 AUTO=0
